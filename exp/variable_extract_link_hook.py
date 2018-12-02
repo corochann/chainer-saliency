@@ -5,13 +5,12 @@ from chainer import links as L
 from chainer import functions as F
 
 
-def _to_list(s):
-    if s is None:
-        return []
-    elif isinstance(s, str):
-        return [s]
-    else:
-        return list(s)
+def _default_extract_pre(hook, args):
+    return args.args[0]
+
+
+def _default_extract_post(hook, args):
+    return args.out
 
 
 class VariableExtractLinkHook(chainer.LinkHook):
@@ -22,12 +21,21 @@ class VariableExtractLinkHook(chainer.LinkHook):
     # name = 'VariableExtractLinkHook'
 
     def __init__(self, target_link, name='VariableExtractLinkHook',
-                 timing='output', postprocess_fn=None):
+                 timing='post', extract_fn=None):
         assert isinstance(target_link, chainer.Link)
+        assert timing in ['pre', 'post']
         super(VariableExtractLinkHook, self).__init__()
         self.target_link = target_link
         self.name = name
-        self.postprocess_fn = postprocess_fn
+        if extract_fn is None:
+            if timing == 'pre':
+                extract_fn = _default_extract_pre
+            elif timing == 'post':
+                extract_fn = _default_extract_post
+            else:
+                raise ValueError("[ERROR] Unexpected value timing={}".format(timing))
+        self.extract_fn = extract_fn
+
         self.timing = timing
         self.result = None
 
@@ -39,24 +47,20 @@ class VariableExtractLinkHook(chainer.LinkHook):
 
     def forward_preprocess(self, args):
         print('forward_preprocess')
-        if self.timing == 'input' and args.link is self.target_link:
+        if self.timing == 'pre' and args.link is self.target_link:
             print('matched at {}'.format(args.link.name))
-            self.result = args.args
+            self.result = self.extract_fn(self, args)
         # print('link', args.link, 'name', args.link.name, 'stack', self.stack)
         # print('forward_name', args.forward_name)
         # out_data.creator.parent_link = link
 
     def forward_postprocess(self, args):
-        if self.timing == 'output' and args.link is self.target_link:
+        if self.timing == 'post' and args.link is self.target_link:
             print('matched at {}'.format(args.link.name))
-            self.result = args.out
+            self.result = self.extract_fn(self, args)
 
     def get_variable(self):
-        if self.postprocess_fn is not None:
-            res = self.postprocess_fn(self.result)
-        else:
-            res = self.result
-        return res
+        return self.result
 
 
 class HogeModel(chainer.Chain):
