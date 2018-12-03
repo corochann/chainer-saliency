@@ -3,7 +3,7 @@ from abc import ABCMeta
 from abc import abstractmethod
 
 import chainer
-from chainer import cuda
+from chainer import cuda, LinkHook
 from chainer.dataset.convert import concat_examples, \
     _concat_arrays_with_padding
 from chainer.iterators import SerialIterator
@@ -33,14 +33,36 @@ def _extract_numpy(x):
     return cuda.to_cpu(x)
 
 
+def add_linkhook(linkhook, prefix=''):
+    link_hooks = chainer._get_link_hooks()
+    name = prefix + linkhook
+    if name in link_hooks:
+        raise KeyError('hook %s already exists' % name)
+
+    link_hooks[name] = linkhook
+    linkhook.added(None)
+    return linkhook
+
+def delete_linkhook(linkhook, prefix=''):
+    name = prefix + linkhook
+    link_hooks = chainer._get_link_hooks()
+    if name not in link_hooks.keys():
+        print('[WARNING] linkhook {} is not registered'.format(name))
+    link_hooks[name].deleted(None)
+    del link_hooks[name]
+
+
 class BaseCalculator(with_metaclass(ABCMeta, object)):
 
-    def __init__(self, model, device=None):
+    def __init__(self, model, target_extractor=None, output_extractor=None,
+                 device=None):
         self.model = model  # type: chainer.Chain
         if device is not None:
             self._device = device
         else:
             self._device = cuda.get_device_from_array(*model.params()).id
+        self.target_extractor = target_extractor
+        self.output_extractor = output_extractor
 
     def compute(
             self, data, M=1, method='vanilla', batchsize=16,
@@ -192,7 +214,21 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
 
             inputs = (_to_variable(x) for x in inputs)
 
+            if isinstance(self.target_extractor, LinkHook):
+                add_linkhook(self.target_extractor, prefix='/saliency/target/')
+            if isinstance(self.output_extractor, LinkHook):
+                add_linkhook(self.output_extractor, prefix='/saliency/target/')
             outputs = fn(*inputs)
+            if isinstance(self.target_extractor, LinkHook):
+                target_var = self.target_extractor.get_variable()
+                delete_linkhook(self.target_extractor, prefix='/saliency/target/')
+            else:
+                target_var = inputs
+            if isinstance(self.output_extractor, LinkHook):
+                output_var = self.output_extractor.get_variable()
+                delete_linkhook(self.output_extractor, prefix='/saliency/target/')
+            else:
+                output_var = outputs
 
             # Init
             if retain_inputs:
