@@ -218,7 +218,9 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
                 add_linkhook(self.target_extractor, prefix='/saliency/target/')
             if isinstance(self.output_extractor, LinkHook):
                 add_linkhook(self.output_extractor, prefix='/saliency/target/')
+
             outputs = fn(*inputs)
+
             if isinstance(self.target_extractor, LinkHook):
                 target_var = self.target_extractor.get_variable()
                 delete_linkhook(self.target_extractor, prefix='/saliency/target/')
@@ -229,6 +231,7 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
                 delete_linkhook(self.output_extractor, prefix='/saliency/target/')
             else:
                 output_var = outputs
+            outputs = self._compute_core(target_var, output_var)
 
             # Init
             if retain_inputs:
@@ -236,6 +239,8 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
                     input_list = [[] for _ in range(len(inputs))]
                 for j, input in enumerate(inputs):
                     input_list[j].append(cuda.to_cpu(input))
+
+
             if output_list is None:
                 output_list = [[] for _ in range(len(outputs))]
 
