@@ -30,16 +30,24 @@ class IntegratedGradientsCalculator(GradientCalculator):
     def _compute_core(self, *inputs):
 
         total_grads = 0.
-        target_var = self.get_target_var(inputs)
+        self.model.cleargrads()
+        self.eval_fun(*inputs)  # Need to forward once to get target_var
+        target_var = self.target_extractor.get_variable()
+        # output_var = self.output_extractor.get_variable()
+
         base = self.baseline
-        diff = target_var.data - base
+        diff = target_var.array - base
+
         for alpha in numpy.linspace(0., 1., self.steps):
-            # TODO: consider case target_key=None
-            interpolated_inputs = (
-                Variable(base + alpha * diff) if self.target_key == i else elem
-                for i, elem in enumerate(inputs))
+            def interpolate_target_var(hook, args, target_var):
+                # target_var = args.out
+                # diff = target_var.array - base
+                interpolated_inputs = base + alpha * diff
+                target_var.array[:] = interpolated_inputs
+
+            self.target_extractor.set_process(interpolate_target_var)
             total_grads += super(
                 IntegratedGradientsCalculator, self)._compute_core(
-                *interpolated_inputs)[0]
+                *inputs)[0]
         saliency = total_grads * diff / self.steps
         return saliency,
