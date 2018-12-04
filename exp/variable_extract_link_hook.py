@@ -1,7 +1,10 @@
+import ctypes
+import weakref
+
 import numpy as np
 
 import chainer
-from chainer import links as L
+from chainer import links as L, LinkHook
 from chainer import functions as F
 
 
@@ -21,7 +24,7 @@ class VariableExtractLinkHook(chainer.LinkHook):
     # name = 'VariableExtractLinkHook'
 
     def __init__(self, target_link, name='VariableExtractLinkHook',
-                 timing='post', extract_fn=None):
+                 timing='post', extract_fn=None, process=None):
         assert isinstance(target_link, chainer.Link)
         assert timing in ['pre', 'post']
         super(VariableExtractLinkHook, self).__init__()
@@ -35,6 +38,7 @@ class VariableExtractLinkHook(chainer.LinkHook):
             else:
                 raise ValueError("[ERROR] Unexpected value timing={}".format(timing))
         self.extract_fn = extract_fn
+        self.process = process  # Additional process, if necessary
 
         self.timing = timing
         self.result = None
@@ -50,6 +54,8 @@ class VariableExtractLinkHook(chainer.LinkHook):
         if self.timing == 'pre' and args.link is self.target_link:
             print('matched at {}'.format(args.link.name))
             self.result = self.extract_fn(self, args)
+            if self.process is not None:
+                self.process(self, args)
         # print('link', args.link, 'name', args.link.name, 'stack', self.stack)
         # print('forward_name', args.forward_name)
         # out_data.creator.parent_link = link
@@ -58,6 +64,14 @@ class VariableExtractLinkHook(chainer.LinkHook):
         if self.timing == 'post' and args.link is self.target_link:
             print('matched at {}'.format(args.link.name))
             self.result = self.extract_fn(self, args)
+            if self.process is not None:
+                self.process(self, args)
+            # args.out.array[:] = args.out.array * 2
+        # print('args.out id', id(args.out))
+        # outref = weakref.ref(args.out)
+        # outref = args.out * 2
+        # ctypes.cast(id(args.out), ctypes.py_object).value = args.out * 2
+        # print('args.out id2', id(args.out))
 
     def get_variable(self):
         return self.result
@@ -70,7 +84,9 @@ class HogeModel(chainer.Chain):
             self.l3 = L.Linear(None, 10)
 
     def forward(self, x):
-        return self.l3(x)
+        out = self.l3(x)
+        print('out id', id(out))
+        return out
 
     # def __call__(self, x):
     #     return self.l1(x)
@@ -96,8 +112,14 @@ if __name__ == '__main__':
     x = np.random.rand(1, 10).astype('f')
     # with RecordParend():
     hook = VariableExtractLinkHook(model.l2.l3)
+
+    y = model(x)
+    print('y0', y)
+    # y = model(x)
+    # print('y1', y)
     with hook:
         y = model(x)
+        print('y2', y)
 
     print(type(hook.result), hook.result)
 

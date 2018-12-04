@@ -43,6 +43,7 @@ def add_linkhook(linkhook, prefix=''):
     linkhook.added(None)
     return linkhook
 
+
 def delete_linkhook(linkhook, prefix=''):
     name = prefix + linkhook
     link_hooks = chainer._get_link_hooks()
@@ -103,7 +104,6 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
         """
 
         def smooth_fn(*inputs):
-            #TODO: support cupy input
             target_array = inputs[self.target_key].data
             xp = cuda.get_array_module(target_array)
 
@@ -217,7 +217,7 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
             if isinstance(self.target_extractor, LinkHook):
                 add_linkhook(self.target_extractor, prefix='/saliency/target/')
             if isinstance(self.output_extractor, LinkHook):
-                add_linkhook(self.output_extractor, prefix='/saliency/target/')
+                add_linkhook(self.output_extractor, prefix='/saliency/output/')
 
             outputs = fn(*inputs)
 
@@ -228,7 +228,7 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
                 target_var = inputs
             if isinstance(self.output_extractor, LinkHook):
                 output_var = self.output_extractor.get_variable()
-                delete_linkhook(self.output_extractor, prefix='/saliency/target/')
+                delete_linkhook(self.output_extractor, prefix='/saliency/output/')
             else:
                 output_var = outputs
             outputs = self._compute_core(target_var, output_var)
@@ -239,7 +239,6 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
                     input_list = [[] for _ in range(len(inputs))]
                 for j, input in enumerate(inputs):
                     input_list[j].append(cuda.to_cpu(input))
-
 
             if output_list is None:
                 output_list = [[] for _ in range(len(outputs))]
