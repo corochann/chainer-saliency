@@ -35,9 +35,11 @@ def _extract_numpy(x):
 
 def add_linkhook(linkhook, prefix=''):
     link_hooks = chainer._get_link_hooks()
-    name = prefix + linkhook
+    name = prefix + linkhook.name
     if name in link_hooks:
-        raise KeyError('hook %s already exists' % name)
+        print('[WARNING] hook {} already exists'.format(name))
+        pass # skip this case...
+        # raise KeyError('hook %s already exists' % name)
 
     link_hooks[name] = linkhook
     linkhook.added(None)
@@ -45,12 +47,12 @@ def add_linkhook(linkhook, prefix=''):
 
 
 def delete_linkhook(linkhook, prefix=''):
-    name = prefix + linkhook
+    name = prefix + linkhook.name
     link_hooks = chainer._get_link_hooks()
     if name not in link_hooks.keys():
         print('[WARNING] linkhook {} is not registered'.format(name))
     link_hooks[name].deleted(None)
-    del link_hooks[name]
+    # del link_hooks[name]  # Do not delete it!!
 
 
 class BaseCalculator(with_metaclass(ABCMeta, object)):
@@ -176,6 +178,18 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
     def _compute_core(self, *inputs):
         raise NotImplementedError
 
+    def get_target_var(self, inputs):
+        if isinstance(self.target_extractor, LinkHook):
+            return self.target_extractor.get_variable()
+        else:
+            return inputs
+
+    def get_output_var(self, outputs):
+        if isinstance(self.output_extractor, LinkHook):
+            return self.output_extractor.get_variable()
+        else:
+            return outputs
+
     def _forward(self, data, fn=None, batchsize=16,
                  converter=concat_examples, retain_inputs=False,
                  preprocess_fn=None, postprocess_fn=None):
@@ -222,16 +236,10 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
             outputs = fn(*inputs)
 
             if isinstance(self.target_extractor, LinkHook):
-                target_var = self.target_extractor.get_variable()
                 delete_linkhook(self.target_extractor, prefix='/saliency/target/')
-            else:
-                target_var = inputs
             if isinstance(self.output_extractor, LinkHook):
-                output_var = self.output_extractor.get_variable()
                 delete_linkhook(self.output_extractor, prefix='/saliency/output/')
-            else:
-                output_var = outputs
-            outputs = self._compute_core(target_var, output_var)
+            # outputs = self._compute_core(target_var, output_var)
 
             # Init
             if retain_inputs:

@@ -5,7 +5,7 @@ from rdkit.Chem import rdDepictor
 from rdkit.Chem.Draw import rdMolDraw2D
 
 
-from saliency.visualizer.base_visualizer import BaseVisualizer
+from chainer_saliency.visualizer.base_visualizer import BaseVisualizer
 
 
 def _convert_to_2d(axes, nrows, ncols):

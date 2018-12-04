@@ -1,8 +1,6 @@
 import numpy
-from chainer import Variable
 
-from saliency.calculator.base_calculator import BaseCalculator
-from saliency.calculator.gradient_calculator import GradientCalculator
+from chainer_saliency.calculator.gradient_calculator import GradientCalculator
 
 
 class IntegratedGradientsCalculator(GradientCalculator):
@@ -10,7 +8,7 @@ class IntegratedGradientsCalculator(GradientCalculator):
     def __init__(self, model, eval_fun=None, eval_key=None, target_key=0,
                  baseline=None, steps=25):
         super(IntegratedGradientsCalculator, self).__init__(
-            model, eval_fun=eval_fun, eval_key=eval_key, target_key=target_key,
+            model, eval_fun=eval_fun,
             multiply_target=False
         )
         # self.target_key = target_key

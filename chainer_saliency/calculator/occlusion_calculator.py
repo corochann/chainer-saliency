@@ -4,8 +4,9 @@ import numpy
 
 import chainer
 import six
+from chainer import cuda
 
-from saliency.calculator.base_calculator import BaseCalculator
+from chainer_saliency.calculator.base_calculator import BaseCalculator
 
 
 def _to_tuple(x):
@@ -38,13 +39,13 @@ class OcclusionCalculator(BaseCalculator):
         self.target_key = target_key
 
     def _compute_core(self, *inputs):
-        if self.target_key is None:
-            target_var = inputs
-        elif isinstance(self.target_key, int):
-            target_var = inputs[self.target_key]
-        else:
-            raise TypeError('Unexpected type {} for target_key'
-                            .format(type(self.target_key)))
+        # if self.target_key is None:
+        #     target_var = inputs
+        # elif isinstance(self.target_key, int):
+        #     target_var = inputs[self.target_key]
+        # else:
+        #     raise TypeError('Unexpected type {} for target_key'
+        #                     .format(type(self.target_key)))
 
         def _extract_score(result):
             if self.eval_key is None:
@@ -59,10 +60,13 @@ class OcclusionCalculator(BaseCalculator):
         # Usually, backward() is not necessary for calculating occlusion
         with chainer.using_config('enable_backprop', self.enable_backprop):
             original_result = self.eval_fun(*inputs)
-        original_score = _extract_score(original_result)
+        # original_score = _extract_score(original_result)
+        target_var = self.target_extractor.get_variable()
+        original_score = self.output_extractor.get_variable()
 
         # TODO: xp and value assign dynamically
-        xp = numpy
+        # xp = numpy
+        xp = cuda.get_array_module(target_var.array)
         value = 0.
 
         # fill with `value`
@@ -93,17 +97,17 @@ class OcclusionCalculator(BaseCalculator):
                     in zip(self.slide_axis, self.size)]
 
         for start in itertools.product(*[six.moves.range(end) for end in end_list]):
-            target_var_occluded = target_var.data.copy()
             occlude_index = _extract_index(self.slide_axis, self.size, start)
-            target_var_occluded[occlude_index] = occlusion_window
 
+            def mask_target_var(hook, args, target_var):
+                target_var.array[occlude_index] = occlusion_window
+
+            self.target_extractor.set_process(mask_target_var)
             # Usually, backward() is not necessary for calculating occlusion
             with chainer.using_config('enable_backprop', self.enable_backprop):
-                # TODO: consider case target_key=None
-                occluded_inputs = (target_var_occluded if self.target_key == i else elem
-                                   for i, elem in enumerate(inputs))
-                occluded_result = self.eval_fun(*occluded_inputs)
-            occluded_score = _extract_score(occluded_result)
+                occluded_result = self.eval_fun(*inputs)
+            occluded_score = self.output_extractor.get_variable()
+            # occluded_score = _extract_score(occluded_result)
             score_diff_var = original_score - occluded_score
             # TODO: expand_dim dynamically
             score_diff = xp.broadcast_to(score_diff_var.data[:, :, None], occlusion_window_shape)
