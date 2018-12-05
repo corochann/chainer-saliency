@@ -37,10 +37,9 @@ def add_linkhook(linkhook, prefix=''):
     link_hooks = chainer._get_link_hooks()
     name = prefix + linkhook.name
     if name in link_hooks:
-        print('[WARNING] hook {} already exists'.format(name))
-        pass # skip this case...
+        print('[WARNING] hook {} already exists, overwrite.'.format(name))
+        pass  # skip this case...
         # raise KeyError('hook %s already exists' % name)
-
     link_hooks[name] = linkhook
     linkhook.added(None)
     return linkhook
@@ -51,8 +50,35 @@ def delete_linkhook(linkhook, prefix=''):
     link_hooks = chainer._get_link_hooks()
     if name not in link_hooks.keys():
         print('[WARNING] linkhook {} is not registered'.format(name))
+        return
     link_hooks[name].deleted(None)
-    # del link_hooks[name]  # Do not delete it!!
+    del link_hooks[name]
+
+
+class GaussianNoiseSampler(object):
+
+    def __init__(self, mode='relative', scale=0.15):
+        self.mode = mode
+        self.scale = scale
+
+    def sample(self, target_array):
+        xp = cuda.get_array_module(target_array)
+        noise = xp.random.normal(
+            0, self.scale, target_array.shape)
+        if self.mode == 'absolute':
+            # `scale` is used as is
+            pass
+        elif self.mode == 'relative':
+            # `scale_axis` is used to calculate `max` and `min` of target_array
+            # As default, all axes except batch axis are treated as `scale_axis`.
+            scale_axis = tuple(range(1, target_array.ndim))
+            noise = noise * (xp.max(target_array, axis=scale_axis, keepdims=True)
+                             - xp.min(target_array, axis=scale_axis, keepdims=True))
+            # print('[DEBUG] noise', noise.shape)
+        else:
+            raise ValueError("[ERROR] Unexpected value mode={}"
+                             .format(self.mode))
+        return noise
 
 
 class BaseCalculator(with_metaclass(ABCMeta, object)):
@@ -99,33 +125,32 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
     def compute_smooth(self, data, M=10, batchsize=16,
                        converter=concat_examples, retain_inputs=False,
                        preprocess_fn=None, postprocess_fn=None, train=False,
-                       scale=0.15, mode='relative'):
+                       noise_sampler=None,):
         """SmoothGrad
         Reference
         https://github.com/PAIR-code/saliency/blob/master/saliency/base.py#L54
         """
+        noise_sampler = noise_sampler or GaussianNoiseSampler(scale=0.15, mode='relative')
 
         def smooth_fn(*inputs):
-            target_array = inputs[self.target_key].data
-            xp = cuda.get_array_module(target_array)
+            if self.target_extractor is None:
+                # inputs[0] is considered as "target_var"
 
-            noise = xp.random.normal(
-                0, scale, inputs[self.target_key].data.shape)
-            if mode == 'absolute':
-                # `scale` is used as is
-                pass
-            elif mode == 'relative':
-                # `scale_axis` is used to calculate `max` and `min` of target_array
-                # As default, all axes except batch axis are treated as `scale_axis`.
-                scale_axis = tuple(range(1, target_array.ndim))
-                noise = noise * (xp.max(target_array, axis=scale_axis, keepdims=True)
-                                 - xp.min(target_array, axis=scale_axis, keepdims=True))
-                # print('[DEBUG] noise', noise.shape)
+                # noise sampler
+                noise = noise_sampler.sample(inputs[0].array)
+                inputs[0].array += noise
+                result = self._compute_core(*inputs)
+            # inputs[self.target_key].data += noise
             else:
-                raise ValueError("[ERROR] Unexpected value mode={}"
-                                 .format(mode))
-            inputs[self.target_key].data += noise
-            return self._compute_core(*inputs)
+                # Add LinkHook
+                def add_noise(hook, args, target_var):
+                    noise = noise_sampler.sample(target_var.array)
+                    target_var.array += noise
+
+                self.target_extractor.add_process('/saliency/add_noise', add_noise)
+                result = self._compute_core(*inputs)
+                self.target_extractor.delete_process('/saliency/add_noise')
+            return result
 
         saliency_list = []
         for _ in range(M):
@@ -218,6 +243,11 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
         output_list = None
         it = SerialIterator(data, batch_size=batchsize, repeat=False,
                             shuffle=False)
+        if isinstance(self.target_extractor, LinkHook):
+            add_linkhook(self.target_extractor, prefix='/saliency/target/')
+        if isinstance(self.output_extractor, LinkHook):
+            add_linkhook(self.output_extractor, prefix='/saliency/output/')
+
         for batch in it:
             inputs = converter(batch, self._device)
             inputs = _to_tuple(inputs)
@@ -228,17 +258,7 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
 
             inputs = (_to_variable(x) for x in inputs)
 
-            if isinstance(self.target_extractor, LinkHook):
-                add_linkhook(self.target_extractor, prefix='/saliency/target/')
-            if isinstance(self.output_extractor, LinkHook):
-                add_linkhook(self.output_extractor, prefix='/saliency/output/')
-
             outputs = fn(*inputs)
-
-            if isinstance(self.target_extractor, LinkHook):
-                delete_linkhook(self.target_extractor, prefix='/saliency/target/')
-            if isinstance(self.output_extractor, LinkHook):
-                delete_linkhook(self.output_extractor, prefix='/saliency/output/')
             # outputs = self._compute_core(target_var, output_var)
 
             # Init
@@ -256,6 +276,11 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
                 outputs = _to_tuple(outputs)
             for j, output in enumerate(outputs):
                 output_list[j].append(_extract_numpy(output))
+
+        if isinstance(self.target_extractor, LinkHook):
+            delete_linkhook(self.target_extractor, prefix='/saliency/target/')
+        if isinstance(self.output_extractor, LinkHook):
+            delete_linkhook(self.output_extractor, prefix='/saliency/output/')
 
         if retain_inputs:
             self.inputs = [numpy.concatenate(

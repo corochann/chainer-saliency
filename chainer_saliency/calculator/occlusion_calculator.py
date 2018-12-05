@@ -1,9 +1,7 @@
 import itertools
-
-import numpy
+import six
 
 import chainer
-import six
 from chainer import cuda
 
 from chainer_saliency.calculator.base_calculator import BaseCalculator
@@ -47,15 +45,15 @@ class OcclusionCalculator(BaseCalculator):
         #     raise TypeError('Unexpected type {} for target_key'
         #                     .format(type(self.target_key)))
 
-        def _extract_score(result):
-            if self.eval_key is None:
-                score = result
-            elif isinstance(self.eval_key, str):
-                score = result[self.eval_key]
-            else:
-                raise TypeError('Unexpected type {} for eval_key'
-                                .format(type(self.eval_key)))
-            return score
+        # def _extract_score(result):
+        #     if self.eval_key is None:
+        #         score = result
+        #     elif isinstance(self.eval_key, str):
+        #         score = result[self.eval_key]
+        #     else:
+        #         raise TypeError('Unexpected type {} for eval_key'
+        #                         .format(type(self.eval_key)))
+        #     return score
 
         # Usually, backward() is not necessary for calculating occlusion
         with chainer.using_config('enable_backprop', self.enable_backprop):
@@ -102,11 +100,13 @@ class OcclusionCalculator(BaseCalculator):
             def mask_target_var(hook, args, target_var):
                 target_var.array[occlude_index] = occlusion_window
 
-            self.target_extractor.set_process(mask_target_var)
+            # self.target_extractor.set_process(mask_target_var)
+            self.target_extractor.add_process('/saliency/mask_target_var', mask_target_var)
             # Usually, backward() is not necessary for calculating occlusion
             with chainer.using_config('enable_backprop', self.enable_backprop):
                 occluded_result = self.eval_fun(*inputs)
             occluded_score = self.output_extractor.get_variable()
+            self.target_extractor.delete_process('/saliency/mask_target_var', mask_target_var)
             # occluded_score = _extract_score(occluded_result)
             score_diff_var = original_score - occluded_score
             # TODO: expand_dim dynamically
