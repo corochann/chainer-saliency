@@ -179,25 +179,25 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
             postprocess_fn=postprocess_fn, train=True)
 
     def transform(self, saliency_arrays, method='raw', lam=0, ch_axis=2):
-        if method == 'raw':
-            h = numpy.sum(saliency_arrays, axis=ch_axis)
-        elif method == 'abs':
-            h = numpy.sum(numpy.abs(saliency_arrays), axis=ch_axis)
-        elif method == 'square':
-            h = numpy.sum(saliency_arrays ** 2, axis=ch_axis)
-        else:
-            raise ValueError('')
+        warnings.warn('`transform` method is deprecated. Please use aggregate method instead')
+        if lam != 0:
+            raise ValueError("[ERROR] lam={} unsuported now!!!".format(lam))
+        return self.aggregate(saliency_arrays, method=method, ch_axis=ch_axis)
 
-        sampling_axis = _sampling_axis
-        if lam == 0:
-            return numpy.mean(h, axis=sampling_axis)
+    def aggregate(self, saliency_arrays, method='raw', ch_axis=2):
+        if method == 'raw':
+            h = saliency_arrays  # do nothing
+        elif method == 'abs':
+            h = numpy.abs(saliency_arrays)
+        elif method == 'square':
+            h = saliency_arrays ** 2
         else:
-            if h.shape[sampling_axis] == 1:
-                # VanillaGrad does not support LCB/UCB calculation
-                raise ValueError(
-                    'saliency_arrays.shape[{}] must be larget than 1'.format(sampling_axis))
-            return numpy.mean(h, axis=sampling_axis) + lam * numpy.std(
-                h, axis=sampling_axis)
+            raise ValueError("[ERROR] Unexpected value method={}".format(method))
+
+        if ch_axis is not None:
+            h = numpy.sum(h, axis=ch_axis)
+        sampling_axis = _sampling_axis
+        return numpy.mean(h, axis=sampling_axis)
 
     @abstractmethod
     def _compute_core(self, *inputs):
@@ -207,7 +207,10 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
         if isinstance(self.target_extractor, LinkHook):
             return self.target_extractor.get_variable()
         else:
-            return inputs
+            if isinstance(inputs, tuple):
+                return inputs[0]
+            else:
+                return inputs
 
     def get_output_var(self, outputs):
         if isinstance(self.output_extractor, LinkHook):
