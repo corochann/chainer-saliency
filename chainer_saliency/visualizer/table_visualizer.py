@@ -31,8 +31,9 @@ class TableVisualizer(BaseVisualizer):
         saliency = saliency[indices]
         feature_names = numpy.asarray(feature_names)[indices]
 
-        # Normalize to [-1, 1] or [0, 1]
-        saliency = scaler(saliency)
+        if scaler is not None:
+            # Normalize to [-1, 1] or [0, 1]
+            saliency = scaler(saliency)
 
         if num_visualize > 0:
             saliency = saliency[:num_visualize]

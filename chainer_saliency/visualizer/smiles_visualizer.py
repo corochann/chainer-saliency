@@ -31,17 +31,11 @@ def is_visible(begin, end):
         return (begin + end) * 0.5
 
 
-class SmilesVisualizer(BaseVisualizer):
+class MolVisualier(BaseVisualizer):
 
-    def visualize(self, saliency, smiles, save_filepath=None,
-                  visualize_ratio=1.0, color_fn=red_blue_cmap, scaler=abs_max_scaler, legend='',
-                  add_Hs=False, use_canonical_smiles=True):
-        mol = Chem.MolFromSmiles(smiles)
-        if use_canonical_smiles:
-            smiles = Chem.MolToSmiles(mol, canonical=True)
-            mol = Chem.MolFromSmiles(smiles)
-        if add_Hs:
-            mol = Chem.AddHs(mol)
+    def visualize(self, saliency, mol, save_filepath=None,
+                  visualize_ratio=1.0, color_fn=red_blue_cmap,
+                  scaler=abs_max_scaler, legend=''):
         num_atoms = mol.GetNumAtoms()
         rdDepictor.Compute2DCoords(mol)
         Chem.SanitizeMol(mol)
@@ -54,9 +48,9 @@ class SmilesVisualizer(BaseVisualizer):
         assert saliency.ndim == 1
         # Cut saliency array for unnecessary tail part
         saliency = saliency[:num_atoms]
-        # Normalize to [-1, 1] or [0, 1]
-        saliency = scaler(saliency)
-        # normed_saliency = copy.deepcopy(saliency)
+        if scaler is not None:
+            # Normalize to [-1, 1] or [0, 1]
+            saliency = scaler(saliency)
 
         abs_saliency = numpy.abs(saliency)
         if visualize_ratio < 1.0:
@@ -105,3 +99,20 @@ class SmilesVisualizer(BaseVisualizer):
         else:
             from IPython.core.display import SVG
             return SVG(svg.replace('svg:', ''))
+
+
+class SmilesVisualizer(MolVisualier):
+
+    def visualize(self, saliency, smiles, save_filepath=None,
+                  visualize_ratio=1.0, color_fn=red_blue_cmap, scaler=abs_max_scaler, legend='',
+                  add_Hs=False, use_canonical_smiles=True):
+
+        mol = Chem.MolFromSmiles(smiles)
+        if use_canonical_smiles:
+            smiles = Chem.MolToSmiles(mol, canonical=True)
+            mol = Chem.MolFromSmiles(smiles)
+        if add_Hs:
+            mol = Chem.AddHs(mol)
+        super(SmilesVisualizer, self).visualize(
+            saliency, mol, save_filepath=save_filepath, visualize_ratio=visualize_ratio,
+            color_fn=color_fn, scaler=scaler, legend=legend,)
