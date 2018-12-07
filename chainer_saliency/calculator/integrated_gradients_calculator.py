@@ -13,19 +13,8 @@ class IntegratedGradientsCalculator(GradientCalculator):
             output_extractor=output_extractor, multiply_target=False,
             eval_fun=eval_fun
         )
-        # self.target_key = target_key
         self.baseline = baseline or 0.
         self.steps = steps
-
-    # def get_target_var(self, inputs):
-    #     if self.target_key is None:
-    #         target_var = inputs
-    #     elif isinstance(self.target_key, int):
-    #         target_var = inputs[self.target_key]
-    #     else:
-    #         raise TypeError('Unexpected type {} for target_key'
-    #                         .format(type(self.target_key)))
-    #     return target_var
 
     def _compute_core(self, *inputs):
 

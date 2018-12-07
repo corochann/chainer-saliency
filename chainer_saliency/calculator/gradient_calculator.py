@@ -16,9 +16,6 @@ class GradientCalculator(BaseCalculator):
         outputs = self.eval_fun(*inputs)
         target_var = self.get_target_var(inputs)
         output_var = self.get_output_var(outputs)
-        # target_var = self.target_extractor.get_variable()
-        # output_var = self.output_extractor.get_variable()
-        # TODO: Consider how deal with the case when eval_var is not scalar,
         # 1. take sum
         # 2. raise error (default behavior)
         # I think option 1 "take sum" is better, since gradient is calculated

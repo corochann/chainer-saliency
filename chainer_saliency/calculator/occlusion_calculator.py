@@ -37,24 +37,6 @@ class OcclusionCalculator(BaseCalculator):
         self.target_key = target_key
 
     def _compute_core(self, *inputs):
-        # if self.target_key is None:
-        #     target_var = inputs
-        # elif isinstance(self.target_key, int):
-        #     target_var = inputs[self.target_key]
-        # else:
-        #     raise TypeError('Unexpected type {} for target_key'
-        #                     .format(type(self.target_key)))
-
-        # def _extract_score(result):
-        #     if self.eval_key is None:
-        #         score = result
-        #     elif isinstance(self.eval_key, str):
-        #         score = result[self.eval_key]
-        #     else:
-        #         raise TypeError('Unexpected type {} for eval_key'
-        #                         .format(type(self.eval_key)))
-        #     return score
-
         # Usually, backward() is not necessary for calculating occlusion
         with chainer.using_config('enable_backprop', self.enable_backprop):
             original_result = self.eval_fun(*inputs)

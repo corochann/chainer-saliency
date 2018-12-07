@@ -1,15 +1,13 @@
 import warnings
 from abc import ABCMeta
 from abc import abstractmethod
+from future.utils import with_metaclass
+import numpy
 
 import chainer
 from chainer import cuda, LinkHook
-from chainer.dataset.convert import concat_examples, \
-    _concat_arrays_with_padding
+from chainer.dataset.convert import concat_examples, _concat_arrays_with_padding  # NOQA
 from chainer.iterators import SerialIterator
-
-from future.utils import with_metaclass
-import numpy
 
 
 _sampling_axis = 0
@@ -31,6 +29,17 @@ def _extract_numpy(x):
     if isinstance(x, chainer.Variable):
         x = x.data
     return cuda.to_cpu(x)
+
+
+def _concat(batch_list):
+    try:
+        return numpy.concatenate(batch_list)
+    except Exception as e:
+        # Thre is a case that each input has different shape,
+        # we cannot concatenate into array in this case.
+
+        elem_list = [elem for batch in batch_list for elem in batch]
+        return _concat_arrays_with_padding(elem_list, padding=0)
 
 
 def add_linkhook(linkhook, prefix=''):
@@ -56,6 +65,7 @@ def delete_linkhook(linkhook, prefix=''):
 
 
 class GaussianNoiseSampler(object):
+    """Default noise sampler class for SmoothGrad"""
 
     def __init__(self, mode='relative', scale=0.15):
         self.mode = mode
@@ -130,7 +140,7 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
         Reference
         https://github.com/PAIR-code/saliency/blob/master/saliency/base.py#L54
         """
-        noise_sampler = noise_sampler or GaussianNoiseSampler(scale=0.15, mode='relative')
+        noise_sampler = noise_sampler or GaussianNoiseSampler()
 
         def smooth_fn(*inputs):
             if self.target_extractor is None:
@@ -296,14 +306,3 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
             return result[0]
         else:
             return result
-
-
-def _concat(batch_list):
-    try:
-        return numpy.concatenate(batch_list)
-    except Exception as e:
-        # Thre is a case that each input has different shape,
-        # we cannot concatenate into array in this case.
-
-        elem_list = [elem for batch in batch_list for elem in batch]
-        return _concat_arrays_with_padding(elem_list, padding=0)

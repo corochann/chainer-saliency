@@ -14,8 +14,8 @@ def _default_extract_post(hook, args):
 class VariableMonitorLinkHook(chainer.LinkHook):
     """Monitor Variable of specific link input/output"""
 
-    def __init__(self, target_link, name='VariableExtractLinkHook',
-                 timing='post', extract_fn=None, process=None):
+    def __init__(self, target_link, name='VariableMonitorLinkHook',
+                 timing='post', extract_fn=None):
         assert isinstance(target_link, chainer.Link)
         assert timing in ['pre', 'post']
         super(VariableMonitorLinkHook, self).__init__()
@@ -33,41 +33,34 @@ class VariableMonitorLinkHook(chainer.LinkHook):
             else:
                 raise ValueError("[ERROR] Unexpected value timing={}".format(timing))
         self.extract_fn = extract_fn
-        # self.process = process  # Additional process, if necessary
-        self.process_fn_dict = OrderedDict()  # Additional process, if necessary
+        self.process_fns = OrderedDict()  # Additional process, if necessary
 
         self.timing = timing
         self.result = None
-
-    # def added(self, link):
-    #     print('added called for link {}'.format(link))
-    #
-    # def deleted(self, link):
-    #     print('deleted called for link {}'.format(link))
 
     def add_process(self, key, fn):
         assert isinstance(key, str)
         assert callable(fn)
         # self.process.update({key: fn})
-        self.process_fn_dict[key] = fn
+        self.process_fns[key] = fn
 
     def delete_process(self, key):
-        del self.process_fn_dict[key]
+        del self.process_fns[key]
 
     def forward_preprocess(self, args):
         if self.timing == 'pre' and args.link is self.target_link:
             # print('[DEBUG] matched at {}'.format(args.link.name))
             self.result = self.extract_fn(self, args)
-            if self.process_fn_dict is not None:
-                for key, fn in self.process_fn_dict.items():
+            if self.process_fns is not None:
+                for key, fn in self.process_fns.items():
                     fn(self, args, self.result)
 
     def forward_postprocess(self, args):
         if self.timing == 'post' and args.link is self.target_link:
             print('matched at {}'.format(args.link.name))
             self.result = self.extract_fn(self, args)
-            if self.process_fn_dict is not None:
-                for key, fn in self.process_fn_dict.items():
+            if self.process_fns is not None:
+                for key, fn in self.process_fns.items():
                     fn(self, args, self.result)
 
     def get_variable(self):
