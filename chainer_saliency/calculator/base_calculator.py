@@ -103,96 +103,21 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
         self.target_extractor = target_extractor
         self.output_extractor = output_extractor
 
-    def compute(
-            self, data, M=1, method='vanilla', batchsize=16,
-            converter=concat_examples, retain_inputs=False, preprocess_fn=None,
-            postprocess_fn=None, train=False):
-        method_dict = {
-            'vanilla': self.compute_vanilla,
-            'smooth': self.compute_smooth,
-            'bayes': self.compute_bayes,
-        }
-        return method_dict[method](
-            data, batchsize=batchsize, M=M, converter=converter,
-            retain_inputs=retain_inputs, preprocess_fn=preprocess_fn,
-            postprocess_fn=postprocess_fn, train=train)
-
-    def compute_vanilla(self, data, batchsize=16, M=1,
-                        converter=concat_examples, retain_inputs=False,
-                        preprocess_fn=None, postprocess_fn=None, train=False):
-        """VanillaGrad"""
+    def compute(self, data, M=10, batchsize=16,
+                converter=concat_examples, retain_inputs=False,
+                preprocess_fn=None, postprocess_fn=None, train=False,
+                noise_sampler=None, ):
         saliency_list = []
         for _ in range(M):
             with chainer.using_config('train', train):
                 saliency = self._forward(
-                    data, fn=self._compute_core, batchsize=batchsize,
+                    data, batchsize=batchsize,
                     converter=converter,
                     retain_inputs=retain_inputs, preprocess_fn=preprocess_fn,
-                    postprocess_fn=postprocess_fn)
-                saliency_list.append(cuda.to_cpu(saliency))
-        return numpy.stack(saliency_list, axis=_sampling_axis)
-
-    def compute_smooth(self, data, M=10, batchsize=16,
-                       converter=concat_examples, retain_inputs=False,
-                       preprocess_fn=None, postprocess_fn=None, train=False,
-                       noise_sampler=None,):
-        """SmoothGrad
-        Reference
-        https://github.com/PAIR-code/saliency/blob/master/saliency/base.py#L54
-        """
-        noise_sampler = noise_sampler or GaussianNoiseSampler()
-
-        def smooth_fn(*inputs):
-            if self.target_extractor is None:
-                # inputs[0] is considered as "target_var"
-
-                # noise sampler
-                noise = noise_sampler.sample(inputs[0].array)
-                inputs[0].array += noise
-                result = self._compute_core(*inputs)
-            # inputs[self.target_key].data += noise
-            else:
-                # Add LinkHook
-                def add_noise(hook, args, target_var):
-                    noise = noise_sampler.sample(target_var.array)
-                    target_var.array += noise
-
-                self.target_extractor.add_process('/saliency/add_noise', add_noise)
-                result = self._compute_core(*inputs)
-                self.target_extractor.delete_process('/saliency/add_noise')
-            return result
-
-        saliency_list = []
-        for _ in range(M):
-            with chainer.using_config('train', train):
-                saliency = self._forward(
-                    data, fn=smooth_fn, batchsize=batchsize,
-                    converter=converter,
-                    retain_inputs=retain_inputs, preprocess_fn=preprocess_fn,
-                    postprocess_fn=postprocess_fn)
+                    postprocess_fn=postprocess_fn, noise_sampler=noise_sampler)
             saliency_array = cuda.to_cpu(saliency)
             saliency_list.append(saliency_array)
         return numpy.stack(saliency_list, axis=_sampling_axis)
-
-    def compute_bayes(self, data, M=10, batchsize=16,
-                      converter=concat_examples, retain_inputs=False,
-                      preprocess_fn=None, postprocess_fn=None, train=True):
-        """BayesGrad"""
-        warnings.warn('`compute_bayes` method maybe deleted in the future...'
-                      'please use `compute_vanilla` with train=True instead.')
-        assert train
-        # This is actually just an alias of `compute_vanilla` with `train=True`
-        # Maybe deleted in the future.
-        return self.compute_vanilla(
-            data, M=M, batchsize=batchsize, converter=converter,
-            retain_inputs=retain_inputs, preprocess_fn=preprocess_fn,
-            postprocess_fn=postprocess_fn, train=True)
-
-    def transform(self, saliency_arrays, method='raw', lam=0, ch_axis=2):
-        warnings.warn('`transform` method is deprecated. Please use aggregate method instead')
-        if lam != 0:
-            raise ValueError("[ERROR] lam={} unsuported now!!!".format(lam))
-        return self.aggregate(saliency_arrays, method=method, ch_axis=ch_axis)
 
     def aggregate(self, saliency_arrays, method='raw', ch_axis=2):
         if method == 'raw':
@@ -228,16 +153,13 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
         else:
             return outputs
 
-    def _forward(self, data, fn=None, batchsize=16,
+    def _forward(self, data, batchsize=16,
                  converter=concat_examples, retain_inputs=False,
-                 preprocess_fn=None, postprocess_fn=None):
+                 preprocess_fn=None, postprocess_fn=None, noise_sampler=None):
         """Forward data by iterating with batch
 
         Args:
             data: "train_x array" or "chainer dataset"
-            fn (Callable): Main function to forward. Its input argument is
-                either Variable, cupy.ndarray or numpy.ndarray, and returns
-                Variable.
             batchsize (int): batch size
             converter (Callable): convert from `data` to `inputs`
             retain_inputs (bool): If True, this instance keeps inputs in
@@ -271,7 +193,30 @@ class BaseCalculator(with_metaclass(ABCMeta, object)):
 
             inputs = (_to_variable(x) for x in inputs)
 
-            outputs = fn(*inputs)
+            # --- Main saliency computation ----
+            if noise_sampler is None:
+                # VanillaGrad computation
+                result = self._compute_core(*inputs)
+            else:
+                # SmoothGrad computation
+                if self.target_extractor is None:
+                    # inputs[0] is considered as "target_var"
+                    noise = noise_sampler.sample(inputs[0].array)
+                    inputs[0].array += noise
+                    result = self._compute_core(*inputs)
+                # inputs[self.target_key].data += noise
+                else:
+                    # Add process to LinkHook
+                    def add_noise(hook, args, target_var):
+                        noise = noise_sampler.sample(target_var.array)
+                        target_var.array += noise
+
+                    self.target_extractor.add_process('/saliency/add_noise', add_noise)
+                    result = self._compute_core(*inputs)
+                    self.target_extractor.delete_process('/saliency/add_noise')
+            outputs = result
+            # --- Main saliency computation end ---
+            # outputs = fn(*inputs)
             # outputs = self._compute_core(target_var, output_var)
 
             # Init
