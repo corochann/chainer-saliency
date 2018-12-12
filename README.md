@@ -1,7 +1,9 @@
 # chainer-saliency
-Saliency calculation module for Chainer
+
+Saliency calculation examples.
 
 # Requirement
 
 chainer>=5.0.0
  - Use `LinkHook`
+chainer-chemistry master branch
