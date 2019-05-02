@@ -16,17 +16,15 @@ From left: 1. Classification saliency map visualization of VGG16, CNN model. 2. 
 
 # setup
 
-chainer>=5.0.0
- - Use `LinkHook`
-chainer-chemistry master branch
+chainer>=5.0.0 : To use `LinkHook` 
+chainer-chemistry>=0.5.0 : saliency module is introduced from 0.5.0
 
 ```bash
 # please update your chainer (version>=5.0.0 is necessary)
 pip install -U chainer
 
-# saliency module is available only in master branch (not included in stable version yet)
-git clone https://github.com/pfnet-research/chainer-chemistry.git
-pip install -e chainer-chemistry
+# install chainer-chemistry
+pip install -U chainer-chemistry
 ```
 
 # saliency module usage
