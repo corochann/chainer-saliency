@@ -16,8 +16,8 @@ From left: 1. Classification saliency map visualization of VGG16, CNN model. 2. 
 
 # setup
 
-chainer>=5.0.0 : To use `LinkHook` 
-chainer-chemistry>=0.5.0 : saliency module is introduced from 0.5.0
+ - chainer>=5.0.0 : To use `LinkHook` 
+ - chainer-chemistry>=0.5.0 : saliency module is introduced from 0.5.0
 
 ```bash
 # please update your chainer (version>=5.0.0 is necessary)
