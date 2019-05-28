@@ -1,0 +1,2 @@
+chainer==5.0.0
+chainer-chemistry==0.5.0
